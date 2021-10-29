@@ -1,0 +1,12 @@
+{
+  "name": "Ember.js CI workflow",
+  "description": "Template for Ember.js add-ons, to run lint and tests.",
+  "iconName": "e-circle-icon-4c",
+  "categories": [
+    "JavaScript",
+    "TypeScript"
+  ],
+  "filePatterns": [
+    "^ember-cli-build.js$"
+  ]
+}
