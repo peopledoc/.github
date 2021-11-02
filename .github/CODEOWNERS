@@ -1,1 +1,2 @@
-.github/workflows/emberjs-*.yml                  @peopledoc/tribe-js
+# Match the directory and all its subdirectories
+/.github/workflows/js/                           @peopledoc/tribe-js
