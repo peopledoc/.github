@@ -30,6 +30,12 @@ on:
         required: false
         type: string
 
+      package_manager:
+        description: Which package manager to use between npm and yarn.
+        default: yarn
+        required: false
+        type: string
+
 jobs:
   lint_tests:
     name: Lint and tests
@@ -42,25 +48,35 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          cache: yarn
+          cache: ${{ inputs.package_manager }}
           node-version: ${{ inputs.nodejs_version }}
 
       # https://github.com/lirantal/lockfile-lint
       - name: Lint lockfile
-        run: >
-          npm_config_yes=true npx lockfile-lint
-          --path yarn.lock
-          --allowed-hosts npm yarn
+        run: |
+          LOCKFILE_DEPS=$(
+            [[ "${{ inputs.package_manager }}" == "npm" ]] && echo "package-lock.json" \
+            || echo "yarn.lock"
+          )
+
+          npm_config_yes=true npx lockfile-lint \
+          --path $LOCKFILE_DEPS \
+          --allowed-hosts npm yarn \
           --validate-https
 
       - name: Install Dependencies
-        run: yarn install --frozen-lockfile
+        run: |
+          if [ "${{ inputs.package_manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn install --frozen-lockfile
+          fi
 
       - name: Run Lint
-        run: yarn run lint
+        run: ${{ inputs.package_manager }} run lint
 
       - name: Run Tests
-        run: yarn run test:ember
+        run: ${{ inputs.package_manager }} run test:ember
 
   floating:
     name: Floating Dependencies
@@ -74,14 +90,19 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          cache: yarn
+          cache: ${{ inputs.package_manager }}
           node-version: ${{ inputs.nodejs_version }}
 
       - name: Install Dependencies
-        run: yarn install --no-lockfile --non-interactive
+        run: |
+          if [ "${{ inputs.package_manager }}" = "npm" ]; then
+            npm install --no-shrinkwrap
+          else
+            yarn install --no-lockfile --non-interactive
+          fi
 
       - name: Run Tests
-        run: yarn run test:ember
+        run: ${{ inputs.package_manager }} run test:ember
 
   ember_try:
     needs: lint_tests
@@ -98,11 +119,16 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          cache: yarn
+          cache: ${{ inputs.package_manager }}
           node-version: ${{ inputs.nodejs_version }}
 
       - name: Install Dependencies
-        run: yarn install --frozen-lockfile
+        run: |
+          if [ "${{ inputs.package_manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn install --frozen-lockfile
+          fi
 
       - name: Run Tests
         run: ./node_modules/.bin/ember try:one ${{ matrix.try-scenario }}
