@@ -1,2 +1,2 @@
 # Match the directory and all its subdirectories
-/.github/workflows/js/                           @peopledoc/tribe-js
+/.github/workflows/js--*                           @peopledoc/tribe-js
