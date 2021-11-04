@@ -1,0 +1,87 @@
+# GitHub Actions documentation:
+# https://docs.github.com/en/actions
+
+name: Auto-update list of contributors
+
+on:
+  workflow_call:
+    inputs:
+      is_protected:
+        description: Indicate if the branch to be updated is protected.
+        default: true
+        required: false
+        type: boolean
+
+jobs:
+  update_contributors_list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+
+      - name: Check if a pull request already exists
+        if: ${{ inputs.is_protected == true }}
+        id: find_existing_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ID_PR="$( \
+            gh api search/issues \
+              --method GET \
+              --raw-field q='repo:${{ github.repository }} type:pr state:open "Auto-update list of contributors" in:title' \
+              --jq '.items.[0].number' \
+          )"
+
+          echo "::set-output name=id_pr_to_close::$ID_PR"
+
+      - name: Close the existing pull request
+        if: ${{ steps.find_existing_pr.outputs.id_pr_to_close }}
+        id: close_existing_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr close ${{ steps.find_existing_pr.outputs.id_pr_to_close }} \
+            --repo ${{ github.repository }} \
+            --delete-branch
+
+      # https://github.com/akhilmhdh/contributors-readme-action
+      - name: Update the list of contributors in the README file
+        uses: akhilmhdh/contributors-readme-action@v2.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          commit_message: 'chore: auto-update contributors list (GH Action)'
+          committer_username: 'akhilmhdh/contributors-readme-action'
+          is_protected: ${{ inputs.is_protected }}
+          use_username: true
+
+      # The Action `akhilmhdh/contributors-readme-action` creates PRs with a fixed title:
+      # https://github.com/akhilmhdh/contributors-readme-action/blob/v2.3/src/index.js#L169
+      - name: Rename the new PR with a better title
+        if: ${{ inputs.is_protected == true }}
+        id: rename_new_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 10 # Some delay is needed to make sure GitHub had time to create the new PR
+
+          ID_PR="$( \
+            gh api search/issues \
+              --method GET \
+              --raw-field q='repo:${{ github.repository }} type:pr state:open "contributors readme action update" in:title' \
+              --jq '.items.[0].number' \
+          )"
+
+          gh pr edit $ID_PR \
+            --repo ${{ github.repository }} \
+            --title "Auto-update list of contributors"
+
+          echo "::set-output name=id_new_pr::$ID_PR"
+
+      - name: Comment the previous PR with reference to the new PR
+        if: ${{ steps.close_existing_pr.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ steps.find_existing_pr.outputs.id_pr_to_close }} \
+            --repo ${{ github.repository }} \
+            --body "This PR has been replaced by #${{ steps.rename_new_pr.outputs.id_new_pr }} ."
