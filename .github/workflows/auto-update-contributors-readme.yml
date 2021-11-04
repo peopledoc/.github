@@ -1,0 +1,60 @@
+# GitHub Actions documentation:
+# https://docs.github.com/en/actions
+
+name: Auto-update list of contributors
+
+on:
+  workflow_call:
+    inputs:
+      is_protected:
+        description: Indicate if the branch to be updated is protected.
+        default: true
+        required: false
+        type: boolean
+
+jobs:
+  update_contributors_list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+
+      - name: Check if a pull request already exists
+        if: ${{ inputs.is_protected == true }}
+        id: find_existing_pr
+        uses: octokit/request-action@v2.x
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+
+          # https://docs.github.com/en/rest/reference/search#search-issues-and-pull-requests
+          # https://docs.github.com/en/search-github/searching-on-github/searching-issues-and-pull-requests
+          route: GET /search/issues
+
+          # The title of the PR to search is fixed, see:
+          # https://github.com/akhilmhdh/contributors-readme-action/blob/v2.3/src/index.js#L169
+          q: type:pr+state:open+contributors+readme+in:title+repo:${{ github.repository }}
+
+      - name: Delete existing pull request
+        # When inputs.is_protected == true
+        #   Request is sent > `outputs.data` is an object with a key `total_count`
+        # When inputs.is_protected == false
+        #   Request is not sent > `outputs.data` is null/empty string
+        if: |
+          steps.find_existing_pr.outputs.data &&
+          fromJSON(steps.find_existing_pr.outputs.data).total_count > 0
+        uses: peter-evans/close-pull@v1
+        with:
+          pull-request-number: ${{ fromJSON(steps.find_existing_pr.outputs.data).items[0].number }}
+          comment: This PR has been replaced to avoid duplication.
+          delete-branch: true
+
+      - name: Update list of contributors in the README file
+        # https://github.com/akhilmhdh/contributors-readme-action
+        uses: akhilmhdh/contributors-readme-action@v2.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          commit_message: 'chore: auto-update contributors list (GH Action)'
+          committer_username: 'akhilmhdh/contributors-readme-action'
+          is_protected: ${{ inputs.is_protected }}
+          use_username: true
