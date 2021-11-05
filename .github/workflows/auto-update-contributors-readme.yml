@@ -5,12 +5,6 @@ name: Auto-update list of contributors
 
 on:
   workflow_call:
-    inputs:
-      is_protected:
-        description: Indicate if the branch to be updated is protected.
-        default: true
-        required: false
-        type: boolean
 
 jobs:
   update_contributors_list:
@@ -18,8 +12,26 @@ jobs:
     timeout-minutes: 20
     steps:
 
+      - name: Check if the default branch is protected
+        id: default_branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          defaultBranch="$( \
+            gh api /repos/${{ github.repository }} \
+              --method GET \
+              --jq '.default_branch'
+          )"
+
+          isProtected="$( \
+            gh api /repos/${{ github.repository }}/branches/$defaultBranch \
+            --jq '.protected'
+          )"
+
+          echo "::set-output name=is_protected::$isProtected"
+
       - name: Check if a pull request already exists
-        if: ${{ inputs.is_protected == true }}
+        if: ${{ steps.default_branch.outputs.is_protected == 'true' }}
         id: find_existing_pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -51,13 +63,13 @@ jobs:
         with:
           commit_message: 'chore: auto-update contributors list (GH Action)'
           committer_username: 'akhilmhdh/contributors-readme-action'
-          is_protected: ${{ inputs.is_protected }}
+          is_protected: ${{ steps.default_branch.outputs.is_protected == 'true' }}
           use_username: true
 
       # The Action `akhilmhdh/contributors-readme-action` creates PRs with a fixed title:
       # https://github.com/akhilmhdh/contributors-readme-action/blob/v2.3/src/index.js#L169
       - name: Rename the new PR with a better title
-        if: ${{ inputs.is_protected == true }}
+        if: ${{ steps.default_branch.outputs.is_protected == 'true' }}
         id: rename_new_pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
