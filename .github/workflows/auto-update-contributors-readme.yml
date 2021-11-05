@@ -18,38 +18,94 @@ jobs:
     timeout-minutes: 20
     steps:
 
+      ##################################
+      #
+      # Using GH Actions
+      #
+      ##################################
+
+      # - name: Check if a pull request already exists
+      #   if: ${{ inputs.is_protected == true }}
+      #   id: find_existing_pr
+      #   uses: octokit/request-action@v2.x
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+
+      #     # https://docs.github.com/en/rest/reference/search#search-issues-and-pull-requests
+      #     # https://docs.github.com/en/search-github/searching-on-github/searching-issues-and-pull-requests
+      #     route: GET /search/issues
+
+      #     # The title of the PR to search is fixed, see:
+      #     # https://github.com/akhilmhdh/contributors-readme-action/blob/v2.3/src/index.js#L169
+      #     q: type:pr+state:open+contributors+readme+in:title+repo:${{ github.repository }}
+
+      # - name: Delete existing pull request
+      #   # When inputs.is_protected == true
+      #   #   Request is sent > `outputs.data` is an object with a key `total_count`
+      #   # When inputs.is_protected == false
+      #   #   Request is not sent > `outputs.data` is null/empty string
+      #   if: |
+      #     steps.find_existing_pr.outputs.data &&
+      #     fromJSON(steps.find_existing_pr.outputs.data).total_count > 0
+      #   uses: peter-evans/close-pull@v1
+      #   with:
+      #     pull-request-number: ${{ fromJSON(steps.find_existing_pr.outputs.data).items[0].number }}
+      #     comment: This PR has been replaced to avoid duplication.
+      #     delete-branch: true
+
+      # - name: Update list of contributors in the README file
+      #   # https://github.com/akhilmhdh/contributors-readme-action
+      #   uses: akhilmhdh/contributors-readme-action@v2.3
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     commit_message: 'chore: auto-update contributors list (GH Action)'
+      #     committer_username: 'akhilmhdh/contributors-readme-action'
+      #     is_protected: ${{ inputs.is_protected }}
+      #     use_username: true
+
+      # - name: Update title of the pull request
+      #   if: ${{ inputs.is_protected == true }}
+      #   uses: octokit/request-action@v2.x
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     route: PATCH /repos/${{ github.repository }}/pulls/36
+      #     title: Update of the contributors list
+
+      ##################################
+      #
+      # Using `gh` CLI
+      #
+      ##################################
+
       - name: Check if a pull request already exists
         if: ${{ inputs.is_protected == true }}
         id: find_existing_pr
-        uses: octokit/request-action@v2.x
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
+        run: |
+          ID_PR="$( gh api search/issues \
+            --method GET \
+            --raw-field q='repo:${{ github.repository }} type:pr state:open "Auto-update list of contributors" in:title' \
+            --jq '.items.[0].number' \
+          )"
 
-          # https://docs.github.com/en/rest/reference/search#search-issues-and-pull-requests
-          # https://docs.github.com/en/search-github/searching-on-github/searching-issues-and-pull-requests
-          route: GET /search/issues
+          echo "::set-output name=id_pr_to_close::$ID_PR"
 
-          # The title of the PR to search is fixed, see:
-          # https://github.com/akhilmhdh/contributors-readme-action/blob/v2.3/src/index.js#L169
-          q: type:pr+state:open+contributors+readme+in:title+repo:${{ github.repository }}
+      - name: Close the existing pull request
+        if: ${{ steps.find_existing_pr.outputs.id_pr_to_close }}
+        id: close_existing_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr close ${{ steps.find_existing_pr.outputs.id_pr_to_close }} \
+            --repo ${{ github.repository }} \
+            --delete-branch
 
-      - name: Delete existing pull request
-        # When inputs.is_protected == true
-        #   Request is sent > `outputs.data` is an object with a key `total_count`
-        # When inputs.is_protected == false
-        #   Request is not sent > `outputs.data` is null/empty string
-        if: |
-          steps.find_existing_pr.outputs.data &&
-          fromJSON(steps.find_existing_pr.outputs.data).total_count > 0
-        uses: peter-evans/close-pull@v1
-        with:
-          pull-request-number: ${{ fromJSON(steps.find_existing_pr.outputs.data).items[0].number }}
-          comment: This PR has been replaced to avoid duplication.
-          delete-branch: true
-
-      - name: Update list of contributors in the README file
-        # https://github.com/akhilmhdh/contributors-readme-action
+      # https://github.com/akhilmhdh/contributors-readme-action
+      - name: Update the list of contributors in the README file
         uses: akhilmhdh/contributors-readme-action@v2.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,3 +114,34 @@ jobs:
           committer_username: 'akhilmhdh/contributors-readme-action'
           is_protected: ${{ inputs.is_protected }}
           use_username: true
+
+      # The Action `akhilmhdh/contributors-readme-action` creates PRs with a fixed title:
+      # https://github.com/akhilmhdh/contributors-readme-action/blob/v2.3/src/index.js#L169
+      - name: Rename the new PR with a better title
+        if: ${{ inputs.is_protected == true }}
+        id: rename_new_pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 10 # Some delay is needed to make sure GitHub had time to create the new PR
+
+          ID_PR="$( gh api search/issues \
+            --method GET \
+            --raw-field q='repo:${{ github.repository }} type:pr state:open "contributors readme action update" in:title' \
+            --jq '.items.[0].number' \
+          )"
+
+          gh pr edit $ID_PR \
+            --repo ${{ github.repository }} \
+            --title "Auto-update list of contributors"
+
+          echo "::set-output name=id_new_pr::$ID_PR"
+
+      - name: Comment the previous PR with reference to the new PR
+        if: ${{ steps.close_existing_pr.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ steps.find_existing_pr.outputs.id_pr_to_close }} \
+            --repo ${{ github.repository }} \
+            --body "This PR has been replaced by #${{ steps.rename_new_pr.outputs.id_new_pr }} ."
