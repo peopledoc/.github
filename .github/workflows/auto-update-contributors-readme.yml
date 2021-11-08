@@ -12,88 +12,48 @@ jobs:
     timeout-minutes: 20
     steps:
 
-      - name: Check if the default branch is protected
-        id: default_branch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          defaultBranch="$( \
-            gh api /repos/${{ github.repository }} \
-              --method GET \
-              --jq '.default_branch'
-          )"
-
-          isProtected="$( \
-            gh api /repos/${{ github.repository }}/branches/$defaultBranch \
-            --jq '.protected'
-          )"
-
-          echo "::set-output name=is_protected::$isProtected"
-
-      - name: Check if a pull request already exists
-        if: ${{ steps.default_branch.outputs.is_protected == 'true' }}
-        id: find_existing_pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ID_PR="$( \
-            gh api search/issues \
-              --method GET \
-              --raw-field q='repo:${{ github.repository }} type:pr state:open "Auto-update list of contributors" in:title' \
-              --jq '.items.[0].number' \
-          )"
-
-          echo "::set-output name=id_pr_to_close::$ID_PR"
-
-      - name: Close the existing pull request
-        if: ${{ steps.find_existing_pr.outputs.id_pr_to_close }}
-        id: close_existing_pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr close ${{ steps.find_existing_pr.outputs.id_pr_to_close }} \
-            --repo ${{ github.repository }} \
-            --delete-branch
-
       # https://github.com/akhilmhdh/contributors-readme-action
       - name: Update the list of contributors in the README file
-        uses: akhilmhdh/contributors-readme-action@v2.3
+        uses: akhilmhdh/contributors-readme-action@v2.3.2
+        id: update_contributors
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           commit_message: 'chore: auto-update contributors list (GH Action)'
           committer_username: 'akhilmhdh/contributors-readme-action'
-          is_protected: ${{ steps.default_branch.outputs.is_protected == 'true' }}
+          pr_title_on_protected: Auto-update list of contributors
           use_username: true
 
-      # The Action `akhilmhdh/contributors-readme-action` creates PRs with a fixed title:
-      # https://github.com/akhilmhdh/contributors-readme-action/blob/v2.3/src/index.js#L169
-      - name: Rename the new PR with a better title
-        if: ${{ steps.default_branch.outputs.is_protected == 'true' }}
-        id: rename_new_pr
+      # The previous step might have created a PR to make the update.
+      # If that's the case, we want to close any previous similar PR, to avoid duplication.
+      - name: 'Close previous pull request (if it exists)'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sleep 10 # Some delay is needed to make sure GitHub had time to create the new PR
-
-          ID_PR="$( \
+          request="$( \
             gh api search/issues \
               --method GET \
-              --raw-field q='repo:${{ github.repository }} type:pr state:open "contributors readme action update" in:title' \
-              --jq '.items.[0].number' \
+              --raw-field q='repo:${{ github.repository }} type:pr state:open sort:updated-asc "Auto-update list of contributors" in:title' \
           )"
 
-          gh pr edit $ID_PR \
-            --repo ${{ github.repository }} \
-            --title "Auto-update list of contributors"
+          count_pr=$( jq '.total_count' <<< $request )
 
-          echo "::set-output name=id_new_pr::$ID_PR"
+          # We are supposed to have either 1 or 2 PRs:
+          # - One PR:  1 created by the previous step + no existing PR
+          # - Two PRs: 1 created by the previous step + 1 existing PR
+          if [ $count_pr -eq 2 ]; then
 
-      - name: Comment the previous PR with reference to the new PR
-        if: ${{ steps.close_existing_pr.outcome == 'success' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr comment ${{ steps.find_existing_pr.outputs.id_pr_to_close }} \
-            --repo ${{ github.repository }} \
-            --body "This PR has been replaced by #${{ steps.rename_new_pr.outputs.id_new_pr }} ."
+            # PRs are sorted by least recently updated date => the first is the oldest.
+            id_pr_oldest=$( jq '.items[0].number' <<< $request )
+
+            # Comment the oldest PR with a link to the new PR.
+            gh pr comment $id_pr_oldest \
+              --repo ${{ github.repository }} \
+              --body "Replaced by #${{ steps.update_contributors.outputs.pr_id }} ."
+
+            # And finally, close the PR.
+            gh pr close $id_pr_oldest \
+              --repo ${{ github.repository }} \
+              --delete-branch
+
+          fi
