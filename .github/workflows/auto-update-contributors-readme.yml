@@ -6,6 +6,14 @@ name: Auto-update list of contributors
 on:
   workflow_call:
 
+    # https://github.com/akhilmhdh/contributors-readme-action#optional-parameters
+    inputs:
+      use_username:
+        description: If people should be listed with their username instead of their full name.
+        default: true
+        required: false
+        type: boolean
+
 jobs:
   update_contributors_list:
     runs-on: ubuntu-latest
@@ -22,7 +30,7 @@ jobs:
           commit_message: 'chore: auto-update contributors list (GH Action)'
           committer_username: 'akhilmhdh/contributors-readme-action'
           pr_title_on_protected: Auto-update list of contributors
-          use_username: true
+          use_username: ${{ inputs.use_username }}
 
       # The previous step might have created a PR to make the update.
       # If that's the case, we want to close any previous similar PR, to avoid duplication.
