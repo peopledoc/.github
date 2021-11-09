@@ -15,7 +15,7 @@ on:
         type: boolean
 
 jobs:
-  update_contributors_list:
+  update_contributors:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
