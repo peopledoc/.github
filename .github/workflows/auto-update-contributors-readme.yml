@@ -41,7 +41,14 @@ jobs:
           request="$( \
             gh api search/issues \
               --method GET \
-              --raw-field q='repo:${{ github.repository }} type:pr state:open sort:updated-asc author:app/github-actions "Auto-update list of contributors" in:title' \
+              --raw-field q='\
+                repo:${{ github.repository }} \
+                type:pr \
+                state:open \
+                sort:updated-asc \
+                author:app/github-actions \
+                "Auto-update list of contributors" in:title\
+              ' \
           )"
 
           count_pr=$( jq '.total_count' <<< $request )
