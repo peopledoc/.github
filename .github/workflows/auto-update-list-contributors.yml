@@ -22,13 +22,12 @@ jobs:
 
       # https://github.com/akhilmhdh/contributors-readme-action
       - name: Update the list of contributors in the README file
-        uses: akhilmhdh/contributors-readme-action@v2.3.2
+        uses: akhilmhdh/contributors-readme-action@v2.3.3
         id: update_contributors
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           commit_message: 'chore: auto-update contributors list (GH Action)'
-          committer_username: 'akhilmhdh/contributors-readme-action'
           pr_title_on_protected: Auto-update list of contributors
           use_username: ${{ inputs.use_username }}
 
