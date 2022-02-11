@@ -16,6 +16,8 @@ on:
           'ember-lts-3.20',
           'ember-lts-3.24',
           'ember-release',
+          'ember-beta',
+          'ember-canary',
           'ember-classic',
           'ember-default-with-jquery',
           'embroider-safe',
@@ -108,10 +110,16 @@ jobs:
     needs: lint_tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    continue-on-error: ${{ matrix.allowed_to_fail || false }}
     strategy:
       fail-fast: false
       matrix:
         try-scenario: ${{ fromJSON(inputs.ember_try_scenarios) }}
+        include:
+          - try-scenario: ember-beta
+            allowed_to_fail: true
+          - try-scenario: ember-canary
+            allowed_to_fail: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
