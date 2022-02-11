@@ -38,6 +38,11 @@ on:
         required: false
         type: string
 
+    secrets:
+      install_token:
+        description: Token used in order to install private packages from repository.
+        required: false
+
 jobs:
   lint_tests:
     name: Lint and tests
@@ -137,6 +142,8 @@ jobs:
           else
             yarn install --frozen-lockfile
           fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.install_token }}
 
       - name: Run Tests
         run: ./node_modules/.bin/ember try:one ${{ matrix.try-scenario }}
