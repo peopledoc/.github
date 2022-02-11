@@ -12,6 +12,12 @@ on:
         default: '12'
         required: false
         type: string
+      
+      registry_url:
+        description: Registry use by npm
+        default: https://registry.npmjs.org
+        required: false
+        type: string
 
       package_manager:
         description: Which package manager to use between npm and yarn.
@@ -81,7 +87,7 @@ jobs:
           node-version: ${{ inputs.nodejs_version }}
           # Required if we want to authenticate during the `npm publish`:
           # https://github.com/actions/setup-node/blob/v2.4.1/action.yml#L15-L16
-          registry-url: https://registry.npmjs.org
+          registry-url: ${{ inputs.registry_url }}
 
       - name: Install Dependencies
         run: |
