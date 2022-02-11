@@ -26,9 +26,12 @@ on:
         type: string
 
     secrets:
+      install_token:
+        description: Token used in order to install private packages from repository.
+        required: false
       npm_automation_token:
         description: |
-          NPM automation token authorised to publish versions.
+          NPM automation token authorized to publish versions.
           Check the settings of your package on npm.
         required: true
 
@@ -96,6 +99,8 @@ jobs:
           else
             yarn install --frozen-lockfile
           fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.install_token }}
 
       - name: Publish to NPM
         run: npm publish
